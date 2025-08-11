@@ -1,6 +1,6 @@
 # logi-hypr
 
-I got myself an mx master 3s and didn't find any good ways to bind it's gestures and per app horizontal scrolling on nixos w/ hyprland, so here we are. the gesture button is hardcoded to the gesture button on my mouse (277)
+I got myself an mx master 3s and didn't find any good ways to bind it's gestures and per app horizontal scrolling on nixos w/ hyprland, so here we are. the gesture button is hardcoded to the gesture button on my mouse (277). user has to be in the input group to use it.
 
 ## usage
 
