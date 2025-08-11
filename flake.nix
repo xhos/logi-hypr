@@ -1,7 +1,5 @@
 {
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-  };
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
   outputs = {
     self,
@@ -130,7 +128,13 @@
                   ]
                   ++ lib.optionals (cfg.gesture.commands != {}) [
                     "--gesture-commands"
-                    (builtins.toJSON cfg.gesture.commands)
+                    (builtins.toJSON {
+                      tap = cfg.gesture.commands.tap or "";
+                      swipe_left = cfg.gesture.commands.swipeLeft or "";
+                      swipe_right = cfg.gesture.commands.swipeRight or "";
+                      swipe_up = cfg.gesture.commands.swipeUp or "";
+                      swipe_down = cfg.gesture.commands.swipeDown or "";
+                    })
                   ]
                   ++ lib.optionals (cfg.scroll.rules != []) [
                     "--scroll-rules"
