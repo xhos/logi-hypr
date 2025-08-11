@@ -40,7 +40,7 @@
         package = self.packages.${pkgs.stdenv.hostPlatform.system}.logi-hypr;
       in {
         options.programs.logi-hypr = {
-          enable = lib.mkEnableOption "logitech gestures for hyprland";
+          enable = lib.mkEnableOption "logitech gesture support for Hyprland";
 
           package = lib.mkOption {
             type = lib.types.package;
@@ -58,13 +58,13 @@
             tapTimeoutMs = lib.mkOption {
               type = lib.types.int;
               default = 200;
-              description = "tap timeout (ms)";
+              description = "tap timeout in milliseconds";
             };
 
             movementThreshold = lib.mkOption {
               type = lib.types.int;
               default = 100;
-              description = "movement threshold (px)";
+              description = "movement threshold for gestures";
             };
 
             commands = lib.mkOption {
@@ -78,7 +78,7 @@
             focusPollMs = lib.mkOption {
               type = lib.types.int;
               default = 200;
-              description = "focus polling interval (ms)";
+              description = "focus polling interval in milliseconds";
             };
 
             rules = lib.mkOption {
@@ -112,7 +112,7 @@
           environment.systemPackages = [cfg.package];
 
           systemd.services.logi-hypr = lib.mkIf cfg.enableService {
-            description = "logitech gesture daemon for hyprland";
+            description = "logitech gesture daemon for Hyprland";
             wantedBy = ["multi-user.target"];
 
             serviceConfig = {
@@ -134,7 +134,12 @@
                   ]
                   ++ lib.optionals (cfg.scroll.rules != []) [
                     "--scroll-rules"
-                    (builtins.toJSON cfg.scroll.rules)
+                    (builtins.toJSON (map (rule: {
+                        window_class_regex = rule.windowClassRegex;
+                        scroll_right_commands = rule.scrollRightCommands;
+                        scroll_left_commands = rule.scrollLeftCommands;
+                      })
+                      cfg.scroll.rules))
                   ];
               in
                 lib.escapeShellArgs args;
