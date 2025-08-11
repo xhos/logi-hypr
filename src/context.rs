@@ -39,10 +39,10 @@ impl EventHandler {
 		Ok(Self {
 			gestures: [
 				config.gesture.commands.tap.clone(),
-				config.gesture.commands.swipe_left.clone(),
-				config.gesture.commands.swipe_right.clone(),
-				config.gesture.commands.swipe_up.clone(),
-				config.gesture.commands.swipe_down.clone(),
+				config.gesture.commands.left.clone(),
+				config.gesture.commands.right.clone(),
+				config.gesture.commands.up.clone(),
+				config.gesture.commands.down.clone(),
 			],
 			scroll_rules,
 			focus_cache: Mutex::new((cache_time, String::new())),

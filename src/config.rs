@@ -18,13 +18,13 @@ pub struct GestureCommands {
 	#[serde(default)]
 	pub tap: String,
 	#[serde(default)]
-	pub swipe_left: String,
+	pub left: String,
 	#[serde(default)]
-	pub swipe_right: String,
+	pub right: String,
 	#[serde(default)]
-	pub swipe_up: String,
+	pub up: String,
 	#[serde(default)]
-	pub swipe_down: String,
+	pub down: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

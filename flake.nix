@@ -1,4 +1,6 @@
 {
+  description = "logitech gesture support for hyprland";
+
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
   outputs = {
@@ -28,25 +30,25 @@
       defaultPackage = self.packages.${pkgs.system}.default;
     in {
       options.programs.logi-hypr = {
-        enable = lib.mkEnableOption "Logitech gesture support for Hyprland";
+        enable = lib.mkEnableOption "logitech gesture support for hyprland";
 
         package = lib.mkOption {
           type = lib.types.package;
           default = defaultPackage;
-          description = "Package for logi-hypr";
+          description = "package for logi-hypr";
         };
 
         gesture = {
           tapTimeoutMs = lib.mkOption {
             type = lib.types.int;
             default = 200;
-            description = "Timeout in milliseconds for tap gestures";
+            description = "gesture is a tap if button held for less (ms)";
           };
 
           movementThreshold = lib.mkOption {
             type = lib.types.int;
             default = 100;
-            description = "Movement threshold for swipe detection";
+            description = "movement threshold for gesture detection (px)";
           };
 
           commands = lib.mkOption {
@@ -55,43 +57,43 @@
             description = "Gesture command mappings";
             example = {
               tap = "hyprctl dispatch togglespecialworkspace";
-              swipeLeft = "playerctl previous";
-              swipeRight = "playerctl next";
-              swipeUp = "hyprctl dispatch workspace m-1";
-              swipeDown = "hyprctl dispatch workspace m+1";
+              left = "playerctl previous";
+              right = "playerctl next";
+              up = "hyprctl dispatch workspace m-1";
+              down = "hyprctl dispatch workspace m+1";
             };
           };
         };
 
         scroll = {
-          focusPollMs = lib.mkOption {
+          poll = lib.mkOption {
             type = lib.types.int;
             default = 200;
-            description = "How often to poll for active window focus in milliseconds";
+            description = "how often to poll for active window focus (ms)";
           };
 
           rules = lib.mkOption {
             type = lib.types.listOf (lib.types.submodule {
               options = {
-                windowClassRegex = lib.mkOption {
+                window = lib.mkOption {
                   type = lib.types.str;
-                  description = "Regex pattern to match window class";
+                  description = "regex pattern to match window class";
                   example = "firefox|chrome";
                 };
                 scrollRightCommands = lib.mkOption {
                   type = lib.types.listOf lib.types.str;
                   default = [];
-                  description = "Commands to execute on scroll right";
+                  description = "commands to execute on scroll right";
                 };
                 scrollLeftCommands = lib.mkOption {
                   type = lib.types.listOf lib.types.str;
                   default = [];
-                  description = "Commands to execute on scroll left";
+                  description = "commands to execute on scroll left";
                 };
               };
             });
             default = [];
-            description = "Scroll behavior rules per window class";
+            description = "scroll behavior rules per window class";
           };
         };
       };
@@ -103,19 +105,19 @@
             exec ${cfg.package}/bin/logi-hypr \
               --tap-timeout-ms ${toString cfg.gesture.tapTimeoutMs} \
               --movement-threshold ${toString cfg.gesture.movementThreshold} \
-              --focus-poll-ms ${toString cfg.scroll.focusPollMs} \
+              --focus-poll-ms ${toString cfg.scroll.poll} \
               ${lib.optionalString (cfg.gesture.commands != {}) ''
               --gesture-commands '${builtins.toJSON {
                 tap = cfg.gesture.commands.tap or "";
-                swipe_left = cfg.gesture.commands.swipeLeft or "";
-                swipe_right = cfg.gesture.commands.swipeRight or "";
-                swipe_up = cfg.gesture.commands.swipeUp or "";
-                swipe_down = cfg.gesture.commands.swipeDown or "";
+                left = cfg.gesture.commands.left or "";
+                right = cfg.gesture.commands.right or "";
+                up = cfg.gesture.commands.up or "";
+                down = cfg.gesture.commands.down or "";
               }}' \
             ''} \
               ${lib.optionalString (cfg.scroll.rules != []) ''
               --scroll-rules '${builtins.toJSON (map (r: {
-                  window_class_regex = r.windowClassRegex;
+                  window_class_regex = r.window;
                   scroll_right_commands = r.scrollRightCommands;
                   scroll_left_commands = r.scrollLeftCommands;
                 })
@@ -137,70 +139,70 @@
       defaultPackage = self.packages.${pkgs.system}.default;
     in {
       options.programs.logi-hypr = {
-        enable = lib.mkEnableOption "Logitech gesture support for Hyprland";
+        enable = lib.mkEnableOption "logitech gesture support for hyprland";
 
         package = lib.mkOption {
           type = lib.types.package;
           default = defaultPackage;
-          description = "Package for logi-hypr";
+          description = "package for logi-hypr";
         };
 
         gesture = {
           tapTimeoutMs = lib.mkOption {
             type = lib.types.int;
             default = 200;
-            description = "Timeout in milliseconds for tap gestures";
+            description = "gesture is a tap if button held for less (ms)";
           };
 
           movementThreshold = lib.mkOption {
             type = lib.types.int;
             default = 100;
-            description = "Movement threshold for swipe detection";
+            description = "movement threshold for gesture detection (px)";
           };
 
           commands = lib.mkOption {
             type = lib.types.attrsOf lib.types.str;
             default = {};
-            description = "Gesture command mappings";
+            description = "gesture command mappings";
             example = {
               tap = "hyprctl dispatch togglespecialworkspace";
-              swipeLeft = "playerctl previous";
-              swipeRight = "playerctl next";
-              swipeUp = "hyprctl dispatch workspace m-1";
-              swipeDown = "hyprctl dispatch workspace m+1";
+              left = "playerctl previous";
+              right = "playerctl next";
+              up = "hyprctl dispatch workspace m-1";
+              down = "hyprctl dispatch workspace m+1";
             };
           };
         };
 
         scroll = {
-          focusPollMs = lib.mkOption {
+          poll = lib.mkOption {
             type = lib.types.int;
             default = 200;
-            description = "How often to poll for active window focus in milliseconds";
+            description = "how often to poll for active window focus (ms)";
           };
 
           rules = lib.mkOption {
             type = lib.types.listOf (lib.types.submodule {
               options = {
-                windowClassRegex = lib.mkOption {
+                window = lib.mkOption {
                   type = lib.types.str;
-                  description = "Regex pattern to match window class";
+                  description = "regex pattern to match window class";
                   example = "firefox|chrome";
                 };
                 scrollRightCommands = lib.mkOption {
                   type = lib.types.listOf lib.types.str;
                   default = [];
-                  description = "Commands to execute on scroll right";
+                  description = "commands to execute on scroll right";
                 };
                 scrollLeftCommands = lib.mkOption {
                   type = lib.types.listOf lib.types.str;
                   default = [];
-                  description = "Commands to execute on scroll left";
+                  description = "commands to execute on scroll left";
                 };
               };
             });
             default = [];
-            description = "Scroll behavior rules per window class";
+            description = "scroll behavior rules per window class";
           };
         };
       };
@@ -212,19 +214,19 @@
             exec ${cfg.package}/bin/logi-hypr \
               --tap-timeout-ms ${toString cfg.gesture.tapTimeoutMs} \
               --movement-threshold ${toString cfg.gesture.movementThreshold} \
-              --focus-poll-ms ${toString cfg.scroll.focusPollMs} \
+              --focus-poll-ms ${toString cfg.scroll.poll} \
               ${lib.optionalString (cfg.gesture.commands != {}) ''
               --gesture-commands '${builtins.toJSON {
                 tap = cfg.gesture.commands.tap or "";
-                swipe_left = cfg.gesture.commands.swipeLeft or "";
-                swipe_right = cfg.gesture.commands.swipeRight or "";
-                swipe_up = cfg.gesture.commands.swipeUp or "";
-                swipe_down = cfg.gesture.commands.swipeDown or "";
+                left = cfg.gesture.commands.left or "";
+                right = cfg.gesture.commands.right or "";
+                up = cfg.gesture.commands.up or "";
+                down = cfg.gesture.commands.down or "";
               }}' \
             ''} \
               ${lib.optionalString (cfg.scroll.rules != []) ''
               --scroll-rules '${builtins.toJSON (map (r: {
-                  window_class_regex = r.windowClassRegex;
+                  window_class_regex = r.window;
                   scroll_right_commands = r.scrollRightCommands;
                   scroll_left_commands = r.scrollLeftCommands;
                 })

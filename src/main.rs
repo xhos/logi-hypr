@@ -105,10 +105,10 @@ fn build_config_from_args(args: &Args) -> Result<Config> {
 			movement_threshold: args.movement_threshold,
 			commands: GestureCommands {
 				tap: gesture_commands.get("tap").cloned().unwrap_or_default(),
-				swipe_left: gesture_commands.get("swipe_left").cloned().unwrap_or_default(),
-				swipe_right: gesture_commands.get("swipe_right").cloned().unwrap_or_default(),
-				swipe_up: gesture_commands.get("swipe_up").cloned().unwrap_or_default(),
-				swipe_down: gesture_commands.get("swipe_down").cloned().unwrap_or_default(),
+				left: gesture_commands.get("left").cloned().unwrap_or_default(),
+				right: gesture_commands.get("right").cloned().unwrap_or_default(),
+				up: gesture_commands.get("up").cloned().unwrap_or_default(),
+				down: gesture_commands.get("down").cloned().unwrap_or_default(),
 			},
 		},
 		scroll: ScrollConfig {
