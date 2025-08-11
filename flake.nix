@@ -6,163 +6,152 @@
     nixpkgs,
   }: let
     systems = ["x86_64-linux" "aarch64-linux"];
-    forAllSystems = f:
-      builtins.listToAttrs (map (system: {
-          name = system;
-          value = f system;
-        })
-        systems);
+    forEach = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
   in {
-    packages = forAllSystems (system: let
-      pkgs = import nixpkgs {inherit system;};
+    packages = forEach (pkgs: let
+      inherit (pkgs) rustPlatform pkg-config;
     in {
-      logi-hypr = pkgs.rustPlatform.buildRustPackage {
+      default = rustPlatform.buildRustPackage {
         pname = "logi-hypr";
         version = "0.1.0";
         src = self;
         cargoLock.lockFile = ./Cargo.lock;
-        nativeBuildInputs = with pkgs; [pkg-config];
+        nativeBuildInputs = [pkg-config];
       };
-
-      default = self.packages.${system}.logi-hypr;
     });
 
-    nixosModules = {
-      logi-hypr = {
-        config,
-        lib,
-        pkgs,
-        ...
-      }: let
-        cfg = config.programs.logi-hypr;
-        package = self.packages.${pkgs.stdenv.hostPlatform.system}.logi-hypr;
-      in {
-        options.programs.logi-hypr = {
-          enable = lib.mkEnableOption "logitech gesture support for Hyprland";
+    nixosModules.default = {
+      config,
+      lib,
+      pkgs,
+      ...
+    }: let
+      cfg = config.programs.logi-hypr;
+      defaultPackage = self.packages.${pkgs.system}.default;
 
-          package = lib.mkOption {
-            type = lib.types.package;
-            default = package;
-            description = "logi-hypr package to use";
+      execArgs = let
+        base = [
+          "${cfg.package}/bin/logi-hypr"
+          "--tap-timeout-ms"
+          (toString cfg.gesture.tapTimeoutMs)
+          "--movement-threshold"
+          (toString cfg.gesture.movementThreshold)
+          "--focus-poll-ms"
+          (toString cfg.scroll.focusPollMs)
+        ];
+
+        gestureJson = lib.optional (cfg.gesture.commands != {}) [
+          "--gesture-commands"
+          (builtins.toJSON {
+            tap = cfg.gesture.commands.tap or "";
+            swipe_left = cfg.gesture.commands.swipeLeft or "";
+            swipe_right = cfg.gesture.commands.swipeRight or "";
+            swipe_up = cfg.gesture.commands.swipeUp or "";
+            swipe_down = cfg.gesture.commands.swipeDown or "";
+          })
+        ];
+
+        scrollJson = lib.optional (cfg.scroll.rules != []) [
+          "--scroll-rules"
+          (builtins.toJSON (map (r: {
+              window_class_regex = r.windowClassRegex;
+              scroll_right_commands = r.scrollRightCommands;
+              scroll_left_commands = r.scrollLeftCommands;
+            })
+            cfg.scroll.rules))
+        ];
+      in
+        base ++ lib.concatLists gestureJson ++ lib.concatLists scrollJson ++ cfg.extraArgs;
+    in {
+      options.programs.logi-hypr = {
+        enable = lib.mkEnableOption "Logitech gesture support for Hyprland (flags only)";
+
+        package = lib.mkPackageOption pkgs "logi-hypr" {
+          default = defaultPackage;
+        };
+
+        # add packages to the service PATH
+        extraPackages = lib.mkOption {
+          type = lib.types.listOf lib.types.package;
+          default = [];
+          example = lib.literalExpression "[ pkgs.playerctl pkgs.hyprland pkgs.xdotool ]";
+          description = "Extra packages added to PATH for commands that logi-hypr will invoke.";
+        };
+
+        # raw passthrough flags appended to ExecStart after generated ones
+        extraArgs = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [];
+          description = "Additional CLI flags to pass through verbatim.";
+        };
+
+        service.enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable the user-level systemd service.";
+        };
+
+        gesture = {
+          tapTimeoutMs = lib.mkOption {
+            type = lib.types.int;
+            default = 200;
           };
-
-          enableService = lib.mkOption {
-            type = lib.types.bool;
-            default = false;
-            description = "enable the logi-hypr systemd service";
+          movementThreshold = lib.mkOption {
+            type = lib.types.int;
+            default = 100;
           };
-
-          gesture = {
-            tapTimeoutMs = lib.mkOption {
-              type = lib.types.int;
-              default = 200;
-              description = "tap timeout in milliseconds";
-            };
-
-            movementThreshold = lib.mkOption {
-              type = lib.types.int;
-              default = 100;
-              description = "movement threshold for gestures";
-            };
-
-            commands = lib.mkOption {
-              type = lib.types.attrsOf lib.types.str;
-              default = {};
-              description = "gesture commands mapping";
-            };
-          };
-
-          scroll = {
-            focusPollMs = lib.mkOption {
-              type = lib.types.int;
-              default = 200;
-              description = "focus polling interval in milliseconds";
-            };
-
-            rules = lib.mkOption {
-              type = lib.types.listOf (lib.types.submodule {
-                options = {
-                  windowClassRegex = lib.mkOption {
-                    type = lib.types.str;
-                    description = "window class regex pattern";
-                  };
-
-                  scrollRightCommands = lib.mkOption {
-                    type = lib.types.listOf lib.types.str;
-                    default = [];
-                    description = "commands for scroll right";
-                  };
-
-                  scrollLeftCommands = lib.mkOption {
-                    type = lib.types.listOf lib.types.str;
-                    default = [];
-                    description = "commands for scroll left";
-                  };
-                };
-              });
-              default = [];
-              description = "scroll rules configuration";
-            };
+          commands = lib.mkOption {
+            type = lib.types.attrsOf lib.types.str;
+            default = {};
+            description = "Gesture command map: tap, swipeLeft, swipeRight, swipeUp, swipeDown.";
           };
         };
 
-        config = lib.mkIf cfg.enable {
-          environment.systemPackages = [cfg.package];
-
-          systemd.services.logi-hypr = lib.mkIf cfg.enableService {
-            description = "logitech gesture daemon for Hyprland";
-            wantedBy = ["multi-user.target"];
-
-            serviceConfig = {
-              Type = "simple";
-              ExecStart = let
-                args =
-                  [
-                    "${cfg.package}/bin/logi-hypr"
-                    "--tap-timeout-ms"
-                    (toString cfg.gesture.tapTimeoutMs)
-                    "--movement-threshold"
-                    (toString cfg.gesture.movementThreshold)
-                    "--focus-poll-ms"
-                    (toString cfg.scroll.focusPollMs)
-                  ]
-                  ++ lib.optionals (cfg.gesture.commands != {}) [
-                    "--gesture-commands"
-                    (builtins.toJSON {
-                      tap = cfg.gesture.commands.tap or "";
-                      swipe_left = cfg.gesture.commands.swipeLeft or "";
-                      swipe_right = cfg.gesture.commands.swipeRight or "";
-                      swipe_up = cfg.gesture.commands.swipeUp or "";
-                      swipe_down = cfg.gesture.commands.swipeDown or "";
-                    })
-                  ]
-                  ++ lib.optionals (cfg.scroll.rules != []) [
-                    "--scroll-rules"
-                    (builtins.toJSON (map (rule: {
-                        window_class_regex = rule.windowClassRegex;
-                        scroll_right_commands = rule.scrollRightCommands;
-                        scroll_left_commands = rule.scrollLeftCommands;
-                      })
-                      cfg.scroll.rules))
-                  ];
-              in
-                lib.escapeShellArgs args;
-
-              Restart = "on-failure";
-            };
+        scroll = {
+          focusPollMs = lib.mkOption {
+            type = lib.types.int;
+            default = 200;
+          };
+          rules = lib.mkOption {
+            type = lib.types.listOf (lib.types.submodule {
+              options = {
+                windowClassRegex = lib.mkOption {type = lib.types.str;};
+                scrollRightCommands = lib.mkOption {
+                  type = lib.types.listOf lib.types.str;
+                  default = [];
+                };
+                scrollLeftCommands = lib.mkOption {
+                  type = lib.types.listOf lib.types.str;
+                  default = [];
+                };
+              };
+            });
+            default = [];
           };
         };
       };
 
-      default = self.nixosModules.logi-hypr;
+      config = lib.mkIf cfg.enable {
+        environment.systemPackages = [cfg.package];
+
+        systemd.user.services.logi-hypr = lib.mkIf cfg.service.enable {
+          description = "logi-hypr (gesture daemon for Hyprland)";
+          wantedBy = ["graphical-session.target"];
+          partOf = ["graphical-session.target"];
+
+          path = cfg.extraPackages;
+
+          serviceConfig = {
+            Type = "simple";
+            ExecStart = lib.escapeShellArgs execArgs;
+            Restart = "on-failure";
+          };
+        };
+      };
     };
 
-    devShells = forAllSystems (system: let
-      pkgs = import nixpkgs {inherit system;};
-    in {
-      default = pkgs.mkShell {
-        packages = with pkgs; [cargo rustc pkg-config];
-      };
+    devShells = forEach (pkgs: {
+      default = pkgs.mkShell {packages = with pkgs; [cargo rustc pkg-config];};
     });
   };
 }
