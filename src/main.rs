@@ -1,20 +1,33 @@
 use anyhow::Result;
 use clap::Parser;
-use std::{path::PathBuf, sync::mpsc};
+use serde_json;
+use std::{collections::HashMap, sync::mpsc};
 use tracing::{error, info, warn};
 
 mod config;
 mod context;
 mod input;
 
-use config::Config;
+use config::{Config, GestureConfig, GestureCommands, ScrollConfig, ScrollRule};
 use context::EventHandler;
 use input::{InputEvent, InputManager};
 
 #[derive(Parser)]
 struct Args {
-	#[arg(long, default_value = "~/.config/logi-hypr/config.toml")]
-	config: PathBuf,
+	#[arg(long, default_value = "200")]
+	tap_timeout_ms: u64,
+
+	#[arg(long, default_value = "100")]
+	movement_threshold: i32,
+
+	#[arg(long, default_value = "200")]
+	focus_poll_ms: u64,
+
+	#[arg(long)]
+	gesture_commands: Option<String>,
+
+	#[arg(long)]
+	scroll_rules: Option<String>,
 
 	#[arg(short, long)]
 	verbose: bool,
@@ -27,7 +40,7 @@ async fn main() -> Result<()> {
 	init_logging(args.verbose);
 	check_hyprland();
 
-	let config = load_config(&args.config)?;
+	let config = build_config_from_args(&args)?;
 	let handler = EventHandler::new(&config)?;
 
 	info!("starting gesture handler");
@@ -71,10 +84,36 @@ fn check_hyprland() {
 	}
 }
 
-fn load_config(path: &PathBuf) -> Result<Config> {
-	Config::from_file(path).or_else(|e| {
-		warn!("failed to load config from {}: {}", path.display(), e);
-		info!("using default configuration");
-		Ok(Config::default())
+fn build_config_from_args(args: &Args) -> Result<Config> {
+	let gesture_commands = if let Some(commands_json) = &args.gesture_commands {
+		serde_json::from_str::<HashMap<String, String>>(commands_json)
+			.map_err(|e| anyhow::anyhow!("Failed to parse gesture commands JSON: {}", e))?
+	} else {
+		HashMap::new()
+	};
+
+	let scroll_rules = if let Some(rules_json) = &args.scroll_rules {
+		serde_json::from_str::<Vec<ScrollRule>>(rules_json)
+			.map_err(|e| anyhow::anyhow!("Failed to parse scroll rules JSON: {}", e))?
+	} else {
+		Vec::new()
+	};
+
+	Ok(Config {
+		gesture: GestureConfig {
+			tap_timeout_ms: args.tap_timeout_ms,
+			movement_threshold: args.movement_threshold,
+			commands: GestureCommands {
+				tap: gesture_commands.get("tap").cloned().unwrap_or_default(),
+				swipe_left: gesture_commands.get("swipe_left").cloned().unwrap_or_default(),
+				swipe_right: gesture_commands.get("swipe_right").cloned().unwrap_or_default(),
+				swipe_up: gesture_commands.get("swipe_up").cloned().unwrap_or_default(),
+				swipe_down: gesture_commands.get("swipe_down").cloned().unwrap_or_default(),
+			},
+		},
+		scroll: ScrollConfig {
+			focus_poll_ms: args.focus_poll_ms,
+			rules: scroll_rules,
+		},
 	})
 }
