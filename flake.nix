@@ -66,19 +66,19 @@
       options.programs.logi-hypr = {
         enable = lib.mkEnableOption "Logitech gesture support for Hyprland (flags only)";
 
-        package = lib.mkPackageOption pkgs "logi-hypr" {
+        package = lib.mkOption {
+          type = lib.types.package;
           default = defaultPackage;
+          description = "package for logi-hypr";
         };
 
-        # add packages to the service PATH
         extraPackages = lib.mkOption {
           type = lib.types.listOf lib.types.package;
           default = [];
           example = lib.literalExpression "[ pkgs.playerctl pkgs.hyprland pkgs.xdotool ]";
-          description = "Extra packages added to PATH for commands that logi-hypr will invoke.";
+          description = "Extra packages added to PATH for commands invoked by logi-hypr.";
         };
 
-        # raw passthrough flags appended to ExecStart after generated ones
         extraArgs = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [];
