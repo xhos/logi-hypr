@@ -1,0 +1,24 @@
+[package]
+name = "logi-hypr"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+tokio = { version = "1.47.1", features = [
+  "rt-multi-thread",
+  "macros",
+  "process",
+  "sync",
+  "signal",
+] }
+anyhow = "1.0.98"
+clap = { version = "4.5.43", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.142"
+toml = "0.9.5"
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"
+evdev = "0.13.1"
+regex = "1.11.1"
+shellexpand = "3.1.1"
