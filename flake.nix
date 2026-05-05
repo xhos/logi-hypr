@@ -13,10 +13,11 @@
     packages = forEach (pkgs: {
       default = pkgs.rustPlatform.buildRustPackage {
         pname = "logi-hypr";
-        version = "0.1.0";
+        version = "0.2.0";
         src = self;
         cargoLock.lockFile = ./Cargo.lock;
         nativeBuildInputs = with pkgs; [pkg-config];
+        buildInputs = with pkgs; [udev];
       };
     });
 
@@ -240,7 +241,7 @@
 
     devShells = forEach (pkgs: {
       default = pkgs.mkShell {
-        packages = with pkgs; [cargo rustc pkg-config];
+        packages = with pkgs; [cargo rustc pkg-config udev];
       };
     });
   };

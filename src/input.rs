@@ -1,7 +1,13 @@
 use anyhow::Result;
 use evdev::{Device, KeyCode, RelativeAxisCode};
 use std::{
-	fs, os::unix::fs::FileTypeExt, path::PathBuf, sync::mpsc::Sender, thread, time::Instant,
+	collections::HashSet,
+	fs,
+	os::{fd::AsRawFd, unix::fs::FileTypeExt},
+	path::{Path, PathBuf},
+	sync::{mpsc::Sender, Arc, Mutex},
+	thread,
+	time::Instant,
 };
 use tracing::{debug, info, warn};
 
@@ -25,6 +31,8 @@ pub struct InputManager {
 	movement_threshold: i32,
 }
 
+type ActiveSet = Arc<Mutex<HashSet<PathBuf>>>;
+
 impl InputManager {
 	pub fn new(tap_timeout_ms: u64, movement_threshold: i32) -> Self {
 		Self {
@@ -34,107 +42,153 @@ impl InputManager {
 	}
 
 	pub fn start_monitoring(self, tx: Sender<InputEvent>) -> Result<()> {
+		let active: ActiveSet = Arc::new(Mutex::new(HashSet::new()));
+
 		info!("scanning for input devices");
-
-		let devices = self.find_gesture_devices()?;
-
-		if devices.is_empty() {
-			warn!("no gesture-capable devices found");
-		} else {
-			info!("monitoring {} devices for gestures", devices.len());
-			for device_path in devices {
-				self.spawn_device_thread(device_path, tx.clone());
-			}
+		for path in find_event_devices()? {
+			self.try_attach(path, &tx, &active);
 		}
 
-		Ok(())
-	}
-
-	fn find_gesture_devices(&self) -> Result<Vec<PathBuf>> {
-		let mut devices = Vec::new();
-
-		for entry in fs::read_dir("/dev/input")? {
-			let entry = entry?;
-			let path = entry.path();
-
-			if self.is_event_device(&entry, &path)? {
-				if let Ok(device) = Device::open(&path) {
-					if self.has_gesture_capability(&device) {
-						info!("found gesture device: {}", path.display());
-						devices.push(path);
-					}
-				}
-			}
+		if active.lock().unwrap().is_empty() {
+			info!("no gesture-capable devices found yet — watching for hot-plug");
 		}
 
-		Ok(devices)
+		self.watch_udev(tx, active)
 	}
 
-	fn is_event_device(&self, entry: &fs::DirEntry, path: &PathBuf) -> Result<bool> {
-		Ok(
-			entry.file_type()?.is_char_device()
-				&& path
-					.file_name()
-					.unwrap()
-					.to_string_lossy()
-					.starts_with("event"),
-		)
+	fn try_attach(&self, path: PathBuf, tx: &Sender<InputEvent>, active: &ActiveSet) {
+		if active.lock().unwrap().contains(&path) {
+			return;
+		}
+
+		let device = match Device::open(&path) {
+			Ok(d) => d,
+			Err(_) => return,
+		};
+
+		if !has_gesture_capability(&device) {
+			return;
+		}
+		drop(device);
+
+		active.lock().unwrap().insert(path.clone());
+		info!("attached gesture device: {}", path.display());
+		self.spawn_device_thread(path, tx.clone(), active.clone());
 	}
 
-	fn has_gesture_capability(&self, device: &Device) -> bool {
-		device
-			.supported_keys()
-			.map_or(false, |keys| keys.contains(KeyCode::BTN_FORWARD))
-	}
-
-	fn spawn_device_thread(&self, path: PathBuf, tx: Sender<InputEvent>) {
+	fn spawn_device_thread(&self, path: PathBuf, tx: Sender<InputEvent>, active: ActiveSet) {
 		let tap_timeout = self.tap_timeout_ms;
 		let movement_threshold = self.movement_threshold;
 
 		thread::spawn(move || {
-			if let Err(e) = Self::monitor_device(path.clone(), tap_timeout, movement_threshold, tx) {
-				warn!("device thread error for {}: {}", path.display(), e);
+			if let Err(e) = monitor_device(&path, tap_timeout, movement_threshold, tx) {
+				warn!("device thread for {} ended: {}", path.display(), e);
 			}
+			active.lock().unwrap().remove(&path);
 		});
 	}
 
-	fn monitor_device(
-		path: PathBuf,
-		tap_timeout_ms: u64,
-		movement_threshold: i32,
-		tx: Sender<InputEvent>,
-	) -> Result<()> {
-		let mut device = Device::open(&path)?;
-		let mut gesture = GestureState::new(tap_timeout_ms, movement_threshold);
+	fn watch_udev(&self, tx: Sender<InputEvent>, active: ActiveSet) -> Result<()> {
+		let socket = udev::MonitorBuilder::new()?
+			.match_subsystem("input")?
+			.listen()?;
 
-		debug!("listening on {}", path.display());
+		info!("watching udev for hot-plugged input devices");
 
 		loop {
-			for event in device.fetch_events()? {
-				match event.destructure() {
-					evdev::EventSummary::Key(_, KeyCode::BTN_FORWARD, value) => {
-						if value == 1 {
-							gesture.start();
-						} else if let Some(event) = gesture.finish() {
-							let _ = tx.send(event);
-						}
-					}
+			wait_readable(socket.as_raw_fd())?;
 
-					evdev::EventSummary::RelativeAxis(_, axis, value) => {
-						let event = match axis {
-							RelativeAxisCode::REL_X => gesture.move_x(value),
-							RelativeAxisCode::REL_Y => gesture.move_y(value),
-							RelativeAxisCode::REL_HWHEEL => Some(InputEvent::HorizontalScroll(value)),
-							_ => None,
-						};
-
-						if let Some(event) = event {
-							let _ = tx.send(event);
-						}
-					}
-
-					_ => {}
+			for event in socket.iter() {
+				if event.event_type() != udev::EventType::Add {
+					continue;
 				}
+				let Some(devnode) = event.devnode() else {
+					continue;
+				};
+				if !is_event_node(devnode) {
+					continue;
+				}
+				self.try_attach(devnode.to_path_buf(), &tx, &active);
+			}
+		}
+	}
+}
+
+fn find_event_devices() -> Result<Vec<PathBuf>> {
+	let mut out = Vec::new();
+	for entry in fs::read_dir("/dev/input")? {
+		let entry = entry?;
+		let path = entry.path();
+		if entry.file_type()?.is_char_device() && is_event_node(&path) {
+			out.push(path);
+		}
+	}
+	Ok(out)
+}
+
+fn is_event_node(path: &Path) -> bool {
+	path.file_name()
+		.and_then(|n| n.to_str())
+		.map(|n| n.starts_with("event"))
+		.unwrap_or(false)
+}
+
+fn has_gesture_capability(device: &Device) -> bool {
+	device
+		.supported_keys()
+		.map_or(false, |keys| keys.contains(KeyCode::BTN_FORWARD))
+}
+
+fn wait_readable(fd: std::os::fd::RawFd) -> std::io::Result<()> {
+	let mut pfd = libc::pollfd {
+		fd,
+		events: libc::POLLIN,
+		revents: 0,
+	};
+	let r = unsafe { libc::poll(&mut pfd, 1, -1) };
+	if r < 0 {
+		Err(std::io::Error::last_os_error())
+	} else {
+		Ok(())
+	}
+}
+
+fn monitor_device(
+	path: &Path,
+	tap_timeout_ms: u64,
+	movement_threshold: i32,
+	tx: Sender<InputEvent>,
+) -> Result<()> {
+	let mut device = Device::open(path)?;
+	let mut gesture = GestureState::new(tap_timeout_ms, movement_threshold);
+
+	debug!("listening on {}", path.display());
+
+	loop {
+		for event in device.fetch_events()? {
+			match event.destructure() {
+				evdev::EventSummary::Key(_, KeyCode::BTN_FORWARD, value) => {
+					if value == 1 {
+						gesture.start();
+					} else if let Some(event) = gesture.finish() {
+						let _ = tx.send(event);
+					}
+				}
+
+				evdev::EventSummary::RelativeAxis(_, axis, value) => {
+					let event = match axis {
+						RelativeAxisCode::REL_X => gesture.move_x(value),
+						RelativeAxisCode::REL_Y => gesture.move_y(value),
+						RelativeAxisCode::REL_HWHEEL => Some(InputEvent::HorizontalScroll(value)),
+						_ => None,
+					};
+
+					if let Some(event) = event {
+						let _ = tx.send(event);
+					}
+				}
+
+				_ => {}
 			}
 		}
 	}

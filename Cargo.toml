@@ -1,6 +1,6 @@
 [package]
 name = "logi-hypr"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 
@@ -20,3 +20,5 @@ tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
 evdev = "0.13.1"
 regex = "1.11.1"
+udev = "0.9"
+libc = "0.2"
